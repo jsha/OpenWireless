@@ -1,0 +1,136 @@
+#!/bin/bash -x
+# Source:
+# http://blogtech.oc9.com/index.php?option=com_content&view=article&catid=44:linux&id=375:vmnets20130518&Itemid=6
+# 
+# This script configures private LAN networks for qemu
+# You can then use those virtual private networks as if they
+# were real network interfaces attached to your machine.
+# This means you can use iptables, dhcpd and the rest
+# to manage those networks. This also means your private 
+# networks will be secured from each other depending on
+# iptables rules.
+# You also need to set proper routing for those networks, just
+# like if they were real private LANs. Hint, use something like:
+# $IPTABLES -t nat -A POSTROUTING  -s 192.168.2.0/24 -o eth0 -j MASQUERADE
+# to let your qemu VMs with private network IP addresses access
+# the world. If they have public IP addresses,
+# just route like you would do on a real LAN
+
+# You have to be familiar with iptables and routing to use this.
+# Otherwise, it will be much simpler for you to just bridge your
+# qemu virtual machines to your real physical network interface like
+# shown here:
+# https://en.wikibooks.org/wiki/QEMU/Networking
+
+
+# There is some documentation floating around on the Internet
+# about setting tap devices for qemu to bridge with your real
+# network interface, similarly to vmnet8 in vmware.
+# This script does something different. It doesn't touch your real
+# network interface at all. It sets private virtual LANs,
+# similarly to vmnet1, vmnet2, etc. in vmware.
+
+# USE start/stop as parameter to bring the vmnets up and
+# down. Note that you won't be able to bring down the
+# subnets properly if any qemu virtual machine running
+# is using a tap device.
+# qemu-if start
+# qemu-if stop
+
+#List the virtual network indexes you want to configure here:
+# networks will be named vmnet1 vmnet3 vmnet4
+# tap devices will be named tap1-0, tap1-1, tap1-2...
+# tap3-0 tap3-1... tap4-0, tap4-1...
+VMNET_INDEX=(1 3 4)
+
+# List the matching IP, in the same order, of the gateways 
+# on the bare metal host system to access the vmnets 
+# You need to have as many gateways as vmnets !
+GATEWAYS=(192.168.44.1 192.168.55.1 192.168.66.1)
+
+# Number of tap devices you need for each vmnet.
+# 10 will create 10 tap devices on each vmnet
+# The tap devices will be named tap1-0, tap1-1, etc.
+# You need at least one tap device for every virtual
+# machine you run with qemu
+# Each virtual network interface in your guest
+# hosts matches one to one to a tap device on your
+# bare metal host.
+# You can then start qemu like this, note "tap1-0" 
+# below, it means that virtual machine will be
+# using interface 0 on vmnet1: 
+# qemu-system-x86_64 -m 256 -display vnc=127.0.0.1:11 \
+# -cdrom slackware64-14.0-install-dvd.iso \
+# -net nic,macaddr=52:54:00:12:FF:57 \
+# -net tap,ifname=tap1-0,script=no,downscript=no & 
+NB_TAPS=10
+
+# User that will be able to access the tap devices. This is
+# the same user that will run the qemu virtual machine
+# Note that it doesn't need to be root although this
+# script must be ran as root.
+# This username must exist on your system!
+QEMU_USER=jsha 
+
+# YOU DO NOT NEED TO EDIT BELOW ;-)
+# Number of subnets/gatways, this is the size of the array
+NB_VMNETS=${#VMNET_INDEX[@]}
+
+if [ "$1" = "start" ]
+then
+
+
+#
+# create the bridges
+#
+
+let i=0
+let j=0
+while [ $j -lt $NB_VMNETS ]
+do
+VMNET_NAME=vmnet${VMNET_INDEX[j]}
+brctl addbr $VMNET_NAME
+  while [ $i -lt $NB_TAPS ]
+  do
+    TAP_NAME=tap${VMNET_INDEX[j]}-${i}
+    openvpn --mktun --dev $TAP_NAME --user $QEMU_USER
+    ifconfig $TAP_NAME 0.0.0.0 promisc up
+    brctl addif $VMNET_NAME $TAP_NAME
+    let i=$i+1
+  done
+# only a single bridge so loops are not possible, turn off spanning tree
+# protocol
+brctl stp $VMNET_NAME off
+ifconfig $VMNET_NAME ${GATEWAYS[j]}
+let i=0
+let j=$j+1
+done
+
+elif [ "$1" = "stop" ]
+then
+
+let i=0
+let j=0
+while [ $j -lt $NB_VMNETS ]
+do  
+  VMNET_NAME=vmnet${VMNET_INDEX[j]}
+  ifconfig ${VMNET_NAME} down
+  brctl delbr ${VMNET_NAME}
+  while [ $i -lt $NB_TAPS ]
+  do
+    ##TAP_NAME=tap${VMNET_INDEX[j]}-${i}
+    TAP_NAME=tap${VMNET_INDEX[j]}-${i}
+    openvpn --rmtun --dev $TAP_NAME
+    let i=$i+1
+  done
+let i=0
+let j=$j+1
+done
+
+else
+echo Please use start/stop as parameter...
+fi
+
+
+
+# end of script
