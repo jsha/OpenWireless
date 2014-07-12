@@ -22,8 +22,3 @@ mkdir cerowrt/files/www/cgi-bin
 
 echo "pushing routerapi to build..."
 cp -rp routerapi cerowrt/files/www/cgi-bin/
-
-echo "pushing unencrypted help to build ..."
-cp -rp unencrypted cerowrt/files/www/
-
-
