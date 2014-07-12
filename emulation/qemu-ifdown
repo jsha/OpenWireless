@@ -1,4 +1,5 @@
 #!/bin/sh  -ex
+# https://en.wikibooks.org/wiki/QEMU/Networking 
 # 
 # Script to bring down and delete bridge br0 when QEMU exits 
 # 

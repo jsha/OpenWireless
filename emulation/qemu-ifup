@@ -1,4 +1,5 @@
 #!/bin/sh -ex
+# https://en.wikibooks.org/wiki/QEMU/Networking 
 #
 # script to bring up the tun device in QEMU in bridged mode
 # first parameter is name of tap device (e.g. tap0)
